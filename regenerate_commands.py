@@ -1,6 +1,48 @@
 #!/usr/bin/env python3
 """
-Regenerate all Midea IR commands with corrected decoder logic
+Midea IR Commands Batch Regeneration Tool
+
+This script provides automated batch processing of all IR capture files to
+regenerate the complete midea_commands.h header with corrected decoder logic.
+
+PURPOSE:
+========
+- Batch process all CSV files in the ir_captures/ folder
+- Apply consistent naming conventions based on filenames
+- Regenerate midea_commands.h with latest decoder improvements
+- Provide automated processing without manual intervention
+
+WHEN TO USE:
+===========
+- After updating the decoder logic in main.py
+- When adding new IR capture files to the ir_captures/ folder
+- To ensure all commands use the latest decoding algorithms
+- Before finalizing the ESP-IDF header file for hardware testing
+
+FEATURES:
+=========
+- Automatically discovers all .csv files in ir_captures/
+- Uses intelligent command naming based on filenames
+- Processes files with the latest decoder logic from main.py
+- Generates ESP-IDF compatible C arrays and template code
+- Shows progress and results for each processed file
+
+USAGE:
+======
+    python regenerate_commands.py
+
+The script will:
+1. Find all CSV files in the ir_captures/ directory
+2. Process each file with the current decoder
+3. Generate command names based on filenames
+4. Export all commands to midea_commands.h
+5. Create ESP-IDF template files if they don't exist
+
+REQUIREMENTS:
+============
+- ir_captures/ folder with CSV files containing IR timing data
+- main.py must be in the same directory (imports decoder functions)
+- CSV files should follow logic analyzer export format
 """
 
 from main import *
@@ -8,7 +50,31 @@ import glob
 import os
 
 def regenerate_all_commands():
-    """Regenerate all commands with suggested names"""
+    """
+    Automatically regenerate all IR commands from CSV files.
+    
+    This function provides fully automated batch processing of IR capture files:
+    
+    Process:
+    1. Scans ir_captures/ folder for all .csv files
+    2. Processes each file using the latest decoder logic
+    3. Generates command names based on filenames (e.g., "power_on.csv" -> "power_on")
+    4. Exports all commands to midea_commands.h with proper C formatting
+    5. Creates ESP-IDF template files for hardware implementation
+    
+    Filename-based naming examples:
+    - power_on.csv -> POWER_ON_TIMING[], power_on_bytes[]
+    - temp_22c.csv -> TEMP_22C_TIMING[], temp_22c_bytes[]
+    - cool_mode.csv -> COOL_MODE_TIMING[], cool_mode_bytes[]
+    
+    The function automatically handles:
+    - Command name sanitization for C identifiers
+    - Duplicate detection and handling
+    - Error recovery for corrupted files
+    - Progress reporting for batch operations
+    
+    Note: This will overwrite the existing midea_commands.h file.
+    """
     csv_files = glob.glob("ir_captures/*.csv")
     if not csv_files:
         print("No CSV files found in ir_captures folder")

@@ -1,9 +1,71 @@
 #!/usr/bin/env python3
 """
-Compare Midea IR commands to find differences
+Midea IR Command Comparison and Analysis Tool
+
+This script performs detailed byte-level comparison of Midea IR commands to help
+understand the protocol structure and identify bit patterns for different functions.
+
+PURPOSE:
+========
+- Compare commands side-by-side to identify differences
+- Analyze bit patterns to understand encoding schemes  
+- Validate decoder logic by examining known command pairs
+- Help reverse-engineer additional protocol features
+
+FEATURES:
+=========
+- Byte-by-byte comparison with XOR difference calculation
+- Binary representation of differing bits
+- Analysis of power state encoding (bit 7 of Byte 1)
+- Mode and temperature pattern identification
+- Checksum validation and structure analysis
+
+USAGE:
+======
+    python compare_commands.py
+
+The script includes hardcoded examples of power on/off commands but can be
+easily modified to compare any two Midea IR command byte arrays.
+
+EXAMPLE OUTPUT:
+==============
+Byte-by-byte comparison of Power ON vs Power OFF:
+============================================================
+Byte   Power OFF    Power ON     Difference   Binary Diff
+------------------------------------------------------------
+Byte 0  0xA1 (161)   0xA1 (161)   Same         --------
+Byte 1  0x02 (  2)   0x82 (130)   0x80         10000000
+[... continues for all bytes ...]
+
+Key differences found:
+- Byte 1: 0x02 (Power OFF) vs 0x82 (Power ON)
+  - Bit 7 difference: 0 vs 1
+  - This confirms power state encoding
+
+HOW TO USE FOR OTHER COMMANDS:
+=============================
+1. Replace the hardcoded byte arrays with your commands
+2. Add more comparison functions for different command types
+3. Use the analysis functions to decode individual bytes
 """
 
 def compare_commands():
+    """
+    Perform detailed comparison between Power ON and Power OFF commands.
+    
+    This function demonstrates how to analyze differences between two Midea
+    IR commands at the byte and bit level. It's particularly useful for
+    understanding the protocol structure and validating decoder logic.
+    
+    The comparison includes:
+    - Byte-by-byte value differences
+    - XOR analysis to show which bits differ
+    - Binary representation of differences
+    - Interpretation of key differences (power state, checksums)
+    
+    You can modify this function to compare any two command byte arrays
+    by replacing the hardcoded values with your own captured data.
+    """
     # Power OFF command bytes
     power_off = [0xA1, 0x02, 0x42, 0xFF, 0xFF, 0xDF, 0x17, 0xBF, 0x6F, 0x40, 0x00, 0x08]
     
@@ -40,30 +102,11 @@ def compare_commands():
     print(f"Power OFF - Byte 1: 0x02 = Auto mode (bits 5-7: {(0x02 >> 5) & 0x07:03b})")
     print(f"Power ON  - Byte 1: 0x82 = Heat mode (bits 5-7: {(0x82 >> 5) & 0x07:03b})")
 
-def decode_midea_temperature(byte_val):
-    """Decode temperature from Midea command byte"""
-    # Midea temperature encoding varies by model, common patterns:
-    temp_mappings = {
-        0x00: 16, 0x01: 17, 0x02: 18, 0x03: 19, 0x04: 20,
-        0x05: 21, 0x06: 22, 0x07: 23, 0x08: 24, 0x09: 25,
-        0x0A: 26, 0x0B: 27, 0x0C: 28, 0x0D: 29, 0x0E: 30
-    }
-    
-    # Extract temperature bits (usually lower 4 bits)
-    temp_bits = byte_val & 0x0F
-    return temp_mappings.get(temp_bits, f"Unknown ({temp_bits})")
-
-def decode_midea_mode(byte_val):
-    """Decode AC mode from Midea command byte"""
-    mode_bits = (byte_val >> 5) & 0x07  # Extract bits 5-7
-    modes = {
-        0x00: "Auto",
-        0x01: "Cool", 
-        0x02: "Dry",
-        0x03: "Fan",
-        0x04: "Heat"
-    }
-    return modes.get(mode_bits, f"Unknown mode ({mode_bits})")
+# Import decoder functions from main.py to avoid duplication
+try:
+    from main import decode_midea_temperature, decode_midea_mode, decode_midea_power, decode_midea_fan_speed
+except ImportError:
+    print("Warning: Could not import decoder functions from main.py")
 
 def analyze_temperature_commands():
     """Analyze all temperature commands to verify their actual settings"""

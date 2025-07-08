@@ -1,13 +1,56 @@
-# Midea AC IR Signal Decoder
-# 
-# Instructions for use:
-# 1. Capture IR signal using an IR receiver and microcontroller
-# 2. Record timing durations in microseconds (μs)
-# 3. Replace the 'durations' list below with your captured data
-# 4. Run this script to decode the Midea AC command
-#
-# The durations list should contain alternating pulse/space timings:
-# [leader_pulse, leader_space, data_pulse_1, data_space_1, data_pulse_2, data_space_2, ...]
+#!/usr/bin/env python3
+"""
+Midea AC IR Signal Decoder and ESP-IDF Code Generator
+
+This script decodes infrared signals from Midea air conditioners and generates
+ESP-IDF compatible C code for IR transmission. It supports both single file
+processing and batch processing of multiple IR captures.
+
+GETTING STARTED:
+===============
+1. Capture IR signals using a logic analyzer or microcontroller
+2. Export timing data as CSV files in the 'ir_captures/' folder
+3. Run this script to decode and generate C code
+
+SUPPORTED INPUT FORMATS:
+=======================
+- Logic analyzer CSV exports (Saleae, PulseView, etc.)
+- Text files with timing values (one per line)
+- Timing data should be in microseconds (μs)
+
+QUICK USAGE:
+===========
+Basic usage (processes main CSV file):
+    python main.py
+
+Process multiple files interactively:
+    python main.py
+    # Follow prompts to select files
+
+Programmatic usage:
+    from main import process_ir_file, import_from_csv
+    durations = import_from_csv('your_file.csv')
+    process_ir_file(durations, 'your_file.csv')
+
+OUTPUT:
+=======
+- midea_commands.h: C arrays for ESP-IDF
+- midea_ir_blaster.h/.c: ESP-IDF template code
+- Detailed command analysis printed to console
+
+HARDWARE SETUP:
+==============
+For capturing IR signals:
+- IR receiver (e.g., TSOP4838) connected to logic analyzer
+- Sample rate: 1MHz+ recommended for accurate timing
+
+For ESP32-C6 IR transmission:
+- IR LED connected via current-limiting resistor
+- Default GPIO: 18 (configurable in generated code)
+
+The timing data format should be alternating pulse/space durations:
+[leader_pulse, leader_space, data_pulse_1, data_space_1, ...]
+"""
 
 import csv
 import re
@@ -15,32 +58,75 @@ import datetime as import_datetime
 import os
 import glob
 
-# Midea AC IR Protocol Parameters
-# Adjust these thresholds based on your specific captures
-LEADER_PULSE_MIN = 4000   # us
-LEADER_PULSE_MAX = 5000   # us
-LEADER_SPACE_MIN = 4000   # us
-LEADER_SPACE_MAX = 5000   # us
+# ==============================================================================
+# MIDEA AC IR PROTOCOL CONFIGURATION
+# ==============================================================================
+# These timing parameters define the Midea AC IR protocol characteristics.
+# Adjust these thresholds based on your specific IR captures if needed.
+# All values are in microseconds (μs).
 
-SHORT_PULSE_MIN = 400     # us
-SHORT_PULSE_MAX = 700     # us
-SHORT_SPACE_MIN = 400     # us
-SHORT_SPACE_MAX = 700     # us
+# Leader sequence (start of transmission)
+LEADER_PULSE_MIN = 4000   # Minimum leader pulse duration
+LEADER_PULSE_MAX = 5000   # Maximum leader pulse duration  
+LEADER_SPACE_MIN = 4000   # Minimum leader space duration
+LEADER_SPACE_MAX = 5000   # Maximum leader space duration
 
-LONG_SPACE_MIN = 1550     # us - adjusted for your signal  
-LONG_SPACE_MAX = 1650     # us - adjusted for your signal
+# Data bit encoding (pulse width modulation)
+SHORT_PULSE_MIN = 400     # Minimum short pulse (represents '0' bit)
+SHORT_PULSE_MAX = 700     # Maximum short pulse
+SHORT_SPACE_MIN = 400     # Minimum short space
+SHORT_SPACE_MAX = 700     # Maximum short space
+
+# Long pulse encoding (represents '1' bit)
+LONG_SPACE_MIN = 1550     # Minimum long pulse duration
+LONG_SPACE_MAX = 1650     # Maximum long pulse duration
 
 def validate_leader(pulse, space):
-    """Check if the first pulse/space pair is a valid Midea leader"""
+    """
+    Validate the IR signal leader sequence.
+    
+    The Midea protocol starts with a specific leader pulse/space pattern
+    that identifies it as a valid Midea transmission.
+    
+    Args:
+        pulse (int): Leader pulse duration in microseconds
+        space (int): Leader space duration in microseconds
+        
+    Returns:
+        bool: True if leader sequence is valid, False otherwise
+        
+    Example:
+        >>> validate_leader(4424, 4424)
+        True
+        >>> validate_leader(1000, 1000)  # Too short
+        False
+    """
     pulse_valid = LEADER_PULSE_MIN <= pulse <= LEADER_PULSE_MAX
     space_valid = LEADER_SPACE_MIN <= space <= LEADER_SPACE_MAX
     return pulse_valid and space_valid
 
 def decode_bit(pulse, space):
-    """Decode a single bit based on pulse and space durations"""
-    # For this Midea protocol, it appears to use pulse width modulation:
-    # Short pulse = 0, Long pulse = 1
+    """
+    Decode a single data bit from pulse and space durations.
     
+    The Midea protocol uses pulse width modulation where:
+    - Short pulse (~560μs) = '0' bit
+    - Long pulse (~1600μs) = '1' bit
+    - Space duration is typically short for both bit types
+    
+    Args:
+        pulse (int): Pulse duration in microseconds
+        space (int): Space duration in microseconds
+        
+    Returns:
+        str: '0', '1', or '?' for invalid/unrecognized pulses
+        
+    Example:
+        >>> decode_bit(560, 560)   # Short pulse = 0
+        '0'
+        >>> decode_bit(1600, 560)  # Long pulse = 1
+        '1'
+    """
     # Check space duration (should be short for both 0 and 1)
     if not (SHORT_SPACE_MIN <= space <= SHORT_SPACE_MAX):
         # Allow slightly longer spaces for end of transmission
@@ -56,7 +142,26 @@ def decode_bit(pulse, space):
         return '?'  # Invalid pulse duration
 
 def decode_midea_temperature(byte_val):
-    """Decode temperature from Midea command byte (Byte 2)"""
+    """
+    Decode temperature setting from Midea command byte.
+    
+    Temperature is encoded in the lower 4 bits of Byte 2 using the formula:
+    temperature = (byte2 & 0x0F) + 17
+    
+    This gives a temperature range of 17°C to 32°C (16 possible values).
+    
+    Args:
+        byte_val (int): Byte 2 from the Midea command (8-bit value)
+        
+    Returns:
+        int or str: Temperature in Celsius, or "Unknown" string for invalid values
+        
+    Example:
+        >>> decode_midea_temperature(0x05)  # 0x05 + 17 = 22°C
+        22
+        >>> decode_midea_temperature(0x00)  # 0x00 + 17 = 17°C  
+        17
+    """
     # Based on analysis: temperature is in Byte 2, formula: (byte2 & 0x0F) + 17
     temp_bits = byte_val & 0x0F
     temperature = temp_bits + 17
@@ -68,7 +173,30 @@ def decode_midea_temperature(byte_val):
         return f"Unknown ({temp_bits})"
 
 def decode_midea_mode(byte_val):
-    """Decode AC mode from Midea command byte"""
+    """
+    Decode AC operation mode from Midea command byte.
+    
+    The mode is encoded in bits 5-7 (upper 3 bits) of Byte 1.
+    
+    Args:
+        byte_val (int): Byte 1 from the Midea command
+        
+    Returns:
+        str: Human-readable mode name
+        
+    Mode mapping:
+        000 (0): Auto
+        001 (1): Cool  
+        010 (2): Dry
+        011 (3): Fan only
+        100 (4): Heat
+        
+    Example:
+        >>> decode_midea_mode(0x82)  # bits 5-7 = 100 = Heat mode
+        'Heat'
+        >>> decode_midea_mode(0x22)  # bits 5-7 = 001 = Cool mode  
+        'Cool'
+    """
     mode_bits = (byte_val >> 5) & 0x07  # Extract bits 5-7
     modes = {
         0x00: "Auto",
@@ -80,7 +208,30 @@ def decode_midea_mode(byte_val):
     return modes.get(mode_bits, f"Unknown mode ({mode_bits})")
 
 def decode_midea_fan_speed(byte_val):
-    """Decode fan speed from Midea command byte"""
+    """
+    Decode fan speed setting from Midea command byte.
+    
+    Fan speed is encoded in the lower 3 bits (bits 0-2) of Byte 3.
+    
+    Args:
+        byte_val (int): Byte 3 from the Midea command
+        
+    Returns:
+        str: Human-readable fan speed description
+        
+    Fan speed mapping:
+        000 (0): Auto
+        001 (1): Low
+        010 (2): Medium  
+        011 (3): High
+        111 (7): Silent
+        
+    Example:
+        >>> decode_midea_fan_speed(0x01)  # bits 0-2 = 001 = Low
+        'Low'
+        >>> decode_midea_fan_speed(0x07)  # bits 0-2 = 111 = Silent
+        'Silent'
+    """
     fan_bits = byte_val & 0x07  # Extract lower 3 bits
     speeds = {
         0x00: "Auto",
@@ -92,7 +243,27 @@ def decode_midea_fan_speed(byte_val):
     return speeds.get(fan_bits, f"Unknown speed ({fan_bits})")
 
 def decode_midea_swing(byte_val):
-    """Decode swing settings from Midea command byte"""
+    """
+    Decode swing (oscillation) settings from Midea command byte.
+    
+    Swing settings are encoded in bits 4-5 of Byte 3:
+    - Bit 4: Vertical swing (up/down oscillation)
+    - Bit 5: Horizontal swing (left/right oscillation)
+    
+    Args:
+        byte_val (int): Byte 3 from the Midea command
+        
+    Returns:
+        str: Human-readable swing status ("Off", "Vertical", "Horizontal", or "Vertical + Horizontal")
+        
+    Example:
+        >>> decode_midea_swing(0x10)  # bit 4 = 1 = Vertical swing
+        'Vertical'
+        >>> decode_midea_swing(0x30)  # bits 4+5 = 1 = Both directions
+        'Vertical + Horizontal'
+        >>> decode_midea_swing(0x00)  # bits 4+5 = 0 = No swing
+        'Off'
+    """
     swing_vertical = (byte_val >> 4) & 0x01
     swing_horizontal = (byte_val >> 5) & 0x01
     
@@ -105,12 +276,62 @@ def decode_midea_swing(byte_val):
     return " + ".join(swing_status) if swing_status else "Off"
 
 def decode_midea_power(byte_val):
-    """Decode power state from Midea command byte (Byte 1, bit 7)"""
+    """
+    Decode power state from Midea command byte.
+    
+    The power state is encoded in bit 7 (MSB) of Byte 1.
+    
+    Args:
+        byte_val (int): Byte 1 from the Midea command
+        
+    Returns:
+        str: "On" if bit 7 is set, "Off" if bit 7 is clear
+        
+    Example:
+        >>> decode_midea_power(0x82)  # bit 7 = 1 = On
+        'On'
+        >>> decode_midea_power(0x02)  # bit 7 = 0 = Off
+        'Off'
+    """
     power_bit = (byte_val >> 7) & 0x01  # Use bit 7 instead of bit 5
     return "On" if power_bit else "Off"
 
 def decode_midea_command(bits_str):
-    """Decode Midea AC command from bit string"""
+    """
+    Decode a complete Midea AC command from binary bit string.
+    
+    This function performs comprehensive analysis of a Midea IR command,
+    extracting and displaying all relevant AC settings and validating
+    the command structure.
+    
+    Args:
+        bits_str (str): Binary string representing the decoded IR signal
+                       (e.g., "101010011001..." - typically 48+ bits)
+    
+    Process:
+        1. Converts binary string to byte array
+        2. Analyzes each byte for specific AC functions
+        3. Calculates and validates checksum
+        4. Displays detailed breakdown of all settings
+        
+    Expected Command Structure (6+ bytes):
+        Byte 0: Command identifier (usually 0xA1)
+        Byte 1: Power state (bit 7) + Mode (bits 5-7)
+        Byte 2: Temperature setting (bits 0-3)
+        Byte 3: Fan speed (bits 0-2) + Swing (bits 4-5)
+        Byte 4: Additional settings
+        Byte 5: Checksum (XOR of all previous bytes)
+        
+    Example:
+        >>> decode_midea_command("10100001100000100100001011111111...")
+        Raw bytes: A1 82 42 FF FF 5F
+        
+        --- Detailed Command Analysis ---
+        Byte 0 (Command): 0xA1
+        Byte 1 (Power/Mode): 0x82 - Power: On, Mode: Heat
+        Byte 2 (Temperature): 0x42 - Temperature: 22°C
+        ...
+    """
     if len(bits_str) < 48:
         print(f"Warning: Expected 48 bits, got {len(bits_str)} bits")
         # Pad with zeros if too short
@@ -154,7 +375,34 @@ def decode_midea_command(bits_str):
         print("Warning: Incomplete command - need at least 6 bytes for proper Midea decoding")
 
 def import_from_csv(filename):
-    """Import timing data from logic analyzer CSV export"""
+    """
+    Import IR timing data from logic analyzer CSV export files.
+    
+    Supports various CSV formats from popular logic analyzers including:
+    - Saleae Logic (Time [s], Channel columns)
+    - PulseView (Time, Digital channels)
+    - Generic time-based CSV formats
+    
+    The function automatically detects the CSV format and extracts timing
+    transitions, calculating pulse/space durations in microseconds.
+    
+    Args:
+        filename (str): Path to the CSV file containing IR capture data
+        
+    Returns:
+        list or None: List of pulse/space durations in microseconds,
+                     or None if file cannot be read or format not recognized
+                     
+    CSV Format Requirements:
+        - Must have a time column (seconds, milliseconds, or microseconds)
+        - Must have at least one digital channel showing IR signal transitions
+        - Time values should be in ascending order
+        
+    Example:
+        >>> durations = import_from_csv('ir_captures/power_on.csv')
+        >>> print(f"Loaded {len(durations)} timing values")
+        Loaded 96 timing values
+    """
     durations = []
     
     try:
@@ -706,7 +954,49 @@ def generate_command_name(bytes_data, filename):
     
     return suggested
 
-# Main execution
+# ==============================================================================
+# MAIN EXECUTION
+# ==============================================================================
+"""
+Main script execution for processing Midea IR signals.
+
+SCRIPT BEHAVIOR:
+===============
+When run directly, this script will:
+
+1. Attempt to load the default file 'ir_captures/digital.csv'
+2. Process the IR timing data to decode the Midea command
+3. Display detailed analysis of the decoded AC settings
+4. Export the command as C arrays for ESP-IDF
+5. Optionally process additional CSV files in batch mode
+
+ALTERNATIVE USAGE PATTERNS:
+==========================
+
+Process a specific file:
+    durations = import_from_csv('ir_captures/your_file.csv')
+    process_ir_file(durations, 'ir_captures/your_file.csv')
+
+Process all files at once:
+    process_multiple_files()
+
+Import from text file instead of CSV:
+    durations = import_from_text('your_file.txt')
+    process_ir_file(durations, 'your_file.txt')
+
+EXPECTED OUTPUT FILES:
+=====================
+- midea_commands.h: C header with all decoded commands
+- midea_ir_blaster.h: ESP-IDF template header
+- midea_ir_blaster.c: ESP-IDF template implementation
+
+TROUBLESHOOTING:
+===============
+- Ensure CSV files are properly formatted with time and channel columns
+- Check that timing values are in microseconds
+- Verify IR signal has proper Midea leader sequence (~4424μs pulse/space)
+- Adjust protocol timing parameters if needed for your specific AC model
+"""
 if __name__ == "__main__":
     # Load captured IR data from the ir_captures folder
     durations = import_from_csv('ir_captures/digital.csv')
