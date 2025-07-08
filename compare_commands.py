@@ -2,8 +2,8 @@
 """
 Midea IR Command Comparison and Analysis Tool
 
-Copyright (c) 2025 Orpheus Johansson (DarkMantrid)
-Repository: https://github.com/DarkMantrid/IR-decoder
+Copyright (c) 2025 Orpheus Johansson (deadtechsolutions)
+Repository: https://github.com/deadtechsolutions/IR-decoder
 
 This script performs detailed byte-level comparison of Midea IR commands to help
 understand the protocol structure and identify bit patterns for different functions.

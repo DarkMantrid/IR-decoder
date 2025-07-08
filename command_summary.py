@@ -2,8 +2,8 @@
 """
 Midea IR Commands Summary Generator
 
-Copyright (c) 2025 Orpheus Johansson (DarkMantrid)
-Repository: https://github.com/DarkMantrid/IR-decoder
+Copyright (c) 2025 Orpheus Johansson (deadtechsolutions)
+Repository: https://github.com/deadtechsolutions/IR-decoder
 
 This script generates a comprehensive summary of all decoded Midea IR commands
 that have been exported to the midea_commands.h header file.

@@ -2,8 +2,8 @@
 """
 Midea IR Commands Batch Regeneration Tool
 
-Copyright (c) 2025 Orpheus Johansson (DarkMantrid)
-Repository: https://github.com/DarkMantrid/IR-decoder
+Copyright (c) 2025 Orpheus Johansson (deadtechsolutions)
+Repository: https://github.com/deadtechsolutions/IR-decoder
 
 This script provides automated batch processing of all IR capture files to
 regenerate the complete midea_commands.h header with corrected decoder logic.

@@ -414,13 +414,13 @@ python main.py
 
 This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
 
-**Copyright (c) 2025 Orpheus Johansson (DarkMantrid)** - Original author and maintainer  
+**Copyright (c) 2025 Orpheus Johansson (deadtechsolutions)** - Original author and maintainer  
 This project is open source and available for educational, research, and commercial use.
 
 ---
 
-**Author**: [Orpheus Johansson (DarkMantrid)](https://github.com/DarkMantrid)  
-**Repository**: [github.com/DarkMantrid/IR-decoder](https://github.com/DarkMantrid/IR-decoder)  
+**Author**: [Orpheus Johansson (deadtechsolutions)](https://github.com/deadtechsolutions)  
+**Repository**: [github.com/deadtechsolutions/IR-decoder](https://github.com/deadtechsolutions/IR-decoder)  
 **Maintainer**: Active development and maintenance  
 **Status**: Production ready for Midea AC IR signal decoding  
 **Platform**: Windows (PowerShell), Linux, macOS compatible  
