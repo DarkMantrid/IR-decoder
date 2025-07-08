@@ -2,6 +2,9 @@
 """
 Midea IR Power Command Deep Analysis Tool
 
+Copyright (c) 2025 Orpheus Johansson (DarkMantrid)
+Repository: https://github.com/DarkMantrid/IR-decoder
+
 This script performs detailed bit-level analysis of Midea power commands to help
 understand and validate the power state encoding mechanism in the IR protocol.
 
