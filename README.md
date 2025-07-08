@@ -412,7 +412,7 @@ python main.py
 
 ## 📄 License
 
-This project is open source. Please check the license file for specific terms and conditions.
+This project is open source and available for educational and research purposes. Feel free to use, modify, and distribute the code as needed for your projects.
 
 ---
 
